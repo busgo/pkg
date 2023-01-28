@@ -2,6 +2,7 @@ package log
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/natefinch/lumberjack"
@@ -50,7 +51,7 @@ func init() {
 	s = logger.Sugar()
 }
 
-func NewLoggerSugar(serviceName, logFile string, level int32) error {
+func NewLoggerSugar(serviceName, logFile string, level string) error {
 
 	hook := &lumberjack.Logger{
 		Filename:   logFile, // 日志文件路径
@@ -63,7 +64,7 @@ func NewLoggerSugar(serviceName, logFile string, level int32) error {
 	fileWriter := zapcore.AddSync(hook)
 
 	writes := []zapcore.WriteSyncer{fileWriter}
-	if zapcore.Level(level) == zapcore.DebugLevel {
+	if logLevel(level) == zapcore.DebugLevel {
 		writes = append(writes, zapcore.AddSync(os.Stdout))
 	}
 
@@ -81,6 +82,25 @@ func NewLoggerSugar(serviceName, logFile string, level int32) error {
 	logger := zap.New(zcore, zap.AddCallerSkip(CallerSkipNum), fields)
 	s = logger.Sugar()
 	return nil
+}
+
+// LogLevel log level
+func logLevel(level string) zapcore.Level {
+
+	level = strings.ToLower(level)
+	switch level {
+
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.DebugLevel
+	}
 }
 
 // Debug uses fmt.Sprint to construct and log a message.
