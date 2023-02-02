@@ -18,68 +18,57 @@ var (
 
 func zapEncoderConfig() zapcore.EncoderConfig {
 	return zapcore.EncoderConfig{
-		TimeKey:       "timestamp",
+		TimeKey:       "ts",
 		LevelKey:      "level",
 		NameKey:       "logger",
 		CallerKey:     "caller",
-		MessageKey:    "message",
-		StacktraceKey: "stacktrace",
+		MessageKey:    "msg",
+		StacktraceKey: "stack",
 		LineEnding:    "\n",
 		EncodeLevel:   zapcore.LowercaseLevelEncoder,
 		EncodeTime: func(t time.Time, e zapcore.PrimitiveArrayEncoder) {
 			e.AppendString(t.Format("2006-01-02 15:04:05"))
 		},
 		EncodeDuration: zapcore.SecondsDurationEncoder,
-		EncodeCaller:   zapcore.FullCallerEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
 }
 func init() {
 
-	config := zap.Config{
-		Level:            zap.NewAtomicLevelAt(zapcore.DebugLevel),
-		Encoding:         "json",
-		EncoderConfig:    zapEncoderConfig(),
-		InitialFields:    map[string]interface{}{"service": "default"},
-		OutputPaths:      []string{"stdout"},
-		ErrorOutputPaths: []string{"stdout"},
-	}
-	logger, err := config.Build(zap.AddCallerSkip(CallerSkipNum))
-	if err != nil {
-		panic(err)
-	}
-	s = logger.Sugar()
+	_ = NewLoggerSugar("default", "", "debug")
 }
 
 func NewLoggerSugar(serviceName, logFile string, level string) error {
 
-	hook := &lumberjack.Logger{
-		Filename:   logFile, // 日志文件路径
-		MaxSize:    128,     // 每个日志文件保存的大小 单位:M
-		MaxAge:     7,       // 文件最多保存多少天
-		MaxBackups: 30,      // 日志文件最多保存多少个备份
-		Compress:   false,   // 是否压缩
-	}
-
-	fileWriter := zapcore.AddSync(hook)
-
-	writes := []zapcore.WriteSyncer{fileWriter}
-	if logLevel(level) == zapcore.DebugLevel {
-		writes = append(writes, zapcore.AddSync(os.Stdout))
-	}
-
-	lowPriority := zap.LevelEnablerFunc(func(lev zapcore.Level) bool {
-		return lev >= zap.DebugLevel
+	levelEnabler := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+		return lvl >= logLevel(level)
 	})
 
-	zcore := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zapEncoderConfig()),
-		zapcore.NewMultiWriteSyncer(writes...),
-		lowPriority,
-	)
+	cores := make([]zapcore.Core, 0)
+	cores = append(cores, zapcore.NewCore(zapcore.NewConsoleEncoder(zapEncoderConfig()), zapcore.AddSync(os.Stdout), levelEnabler))
 
-	fields := zap.Fields(zap.String("service_name", serviceName))
-	logger := zap.New(zcore, zap.AddCallerSkip(CallerSkipNum), fields)
+	if logFile != "" {
+		hook := &lumberjack.Logger{
+			Filename:   logFile, // 日志文件路径
+			MaxSize:    128,     // 每个日志文件保存的大小 单位:M
+			MaxAge:     7,       // 文件最多保存多少天
+			MaxBackups: 30,      // 日志文件最多保存多少个备份
+			Compress:   false,   // 是否压缩
+		}
+		fileWriter := zapcore.AddSync(hook)
+		writes := []zapcore.WriteSyncer{fileWriter}
+		cores = append(cores, zapcore.NewCore(
+			zapcore.NewJSONEncoder(zapEncoderConfig()),
+			zapcore.NewMultiWriteSyncer(writes...),
+			levelEnabler,
+		))
+
+	}
+
+	tree := zapcore.NewTee(cores...)
+	logger := zap.New(tree, zap.WithCaller(true), zap.AddCallerSkip(CallerSkipNum), zap.AddStacktrace(zapcore.ErrorLevel))
+	logger.With(zap.String("service_name", serviceName))
 	s = logger.Sugar()
 	return nil
 }
