@@ -36,25 +36,31 @@ func zapEncoderConfig() zapcore.EncoderConfig {
 }
 func init() {
 
-	_ = NewLoggerSugar("default", "", "debug")
+	_ = NewLoggerSugar(WithServiceName(""), WithLevel("debug"))
 }
 
-func NewLoggerSugar(serviceName, logFile string, level string) error {
+func NewLoggerSugar(opts ...Option) error {
+
+	c := _config
+
+	for _, opt := range opts {
+		opt(&c)
+	}
 
 	levelEnabler := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
-		return lvl >= logLevel(level)
+		return lvl >= logLevel(c.level)
 	})
 
 	cores := make([]zapcore.Core, 0)
 	cores = append(cores, zapcore.NewCore(zapcore.NewConsoleEncoder(zapEncoderConfig()), zapcore.AddSync(os.Stdout), levelEnabler))
 
-	if logFile != "" {
+	if c.logFile != "" {
 		hook := &lumberjack.Logger{
-			Filename:   logFile, // 日志文件路径
-			MaxSize:    128,     // 每个日志文件保存的大小 单位:M
-			MaxAge:     7,       // 文件最多保存多少天
-			MaxBackups: 30,      // 日志文件最多保存多少个备份
-			Compress:   false,   // 是否压缩
+			Filename:   c.logFile,  // 日志文件路径
+			MaxSize:    c.maxSize,  // 每个日志文件保存的大小 单位:M
+			MaxAge:     c.maxAge,   // 文件最多保存多少天
+			MaxBackups: c.maxAge,   // 日志文件最多保存多少个备份
+			Compress:   c.compress, // 是否压缩
 		}
 		fileWriter := zapcore.AddSync(hook)
 		writes := []zapcore.WriteSyncer{fileWriter}
@@ -68,7 +74,7 @@ func NewLoggerSugar(serviceName, logFile string, level string) error {
 
 	tree := zapcore.NewTee(cores...)
 	logger := zap.New(tree, zap.WithCaller(true), zap.AddCallerSkip(CallerSkipNum), zap.AddStacktrace(zapcore.ErrorLevel))
-	logger.With(zap.String("service_name", serviceName))
+	logger.With(zap.String("service_name", c.serviceName))
 	s = logger.Sugar()
 	return nil
 }

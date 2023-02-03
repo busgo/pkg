@@ -11,7 +11,7 @@ func TestDebug(t *testing.T) {
 
 	time.Sleep(time.Second * 10)
 
-	_ = NewLoggerSugar("gateway", "gateway.log", "debug")
+	_ = NewLoggerSugar(WithServiceName("gateway"), WithLogFile("gateway.log"), WithLevel("debug"))
 	Debugf("ok %s", "debugf")
 	Infof("ok %s", "infof")
 	Warnf("ok %s", "warnf")
